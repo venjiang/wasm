@@ -1,0 +1,65 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  GREETING: Hello, World!
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    silent: false
+
+  wasm-build:
+    cmds:
+      - GOOS=js GOARCH=wasm go build -o main.wasm main.go
+    desc: wasm build
+    dir: pkg
+    silent: false
+
+  wasm-run:
+    cmds:
+      - GOOS=js GOARCH=wasm go run -exec="$(go env GOROOT)/misc/wasm/go_js_wasm_exec" main.go
+    desc: wasm run
+    dir: pkg
+    silent: false
+
+  tinygo-build:
+    cmds:
+      - tinygo build -o wasi.wasm -target wasm ./wasi.go
+    desc: tinygo build wasm 
+    dir: pkg
+    silent: false
+
+  wasmer-run:
+    cmds:
+      - wasmer triple-rust.wasm -i triple 4
+      - wasmer wasi.wasm -i hello "tinygo wasm"
+    desc: wasmer run 
+    dir: pkg
+    silent: false
+
+  web:
+    dir: web
+    deps: [wasm-build]
+    cmds:
+      - cp ../pkg/main.wasm ./
+      - go run main.go
+    desc: web demo
+    silent: false
+
+  wasi:
+    cmds:
+      - go run main.go
+    dir: wasi
+    deps: [tinygo-build]
+    desc: wasi demo
+    silent: false
+
+  wat:
+    cmds:
+      - wasm2wat triple-rust.wasm
+    dir: pkg
+    desc: use wasm2wat display triple-rust.wasm text
+    silent: false
