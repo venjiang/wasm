@@ -1,28 +1,25 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 
-	// "github.com/mathetake/gasm/wasi"
-	// "github.com/mathetake/gasm/wasm"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/wasi"
 	// "github.com/go-interpreter/wagon/exec"
 	// "github.com/go-interpreter/wagon/wasm"
-	"github.com/mathetake/gasm/wasi"
-	"github.com/mathetake/gasm/wasm"
-	wasmer "github.com/wasmerio/wasmer-go/wasmer"
+	"github.com/wasmerio/wasmer-go/wasmer"
 )
 
 func main() {
-	// wagon()
-	// gasm()
-	// loadGoWasm()
-	loadRustWasm()
+	// loadTinyGoWasmer()
+	// loadRustWasmer()
+	loadTinyGoWazero()
 }
 
-func loadGoWasm() {
-	wasmBytes, _ := ioutil.ReadFile("../pkg/wasi.wasm")
+func loadTinyGoWasmer() {
+	wasmBytes, _ := os.ReadFile("../pkg/wasi.wasm")
 	// Create an Engine
 	engine := wasmer.NewEngine()
 	// Create a Store
@@ -51,8 +48,8 @@ func loadGoWasm() {
 
 }
 
-func loadRustWasm() {
-	wasmBytes, _ := ioutil.ReadFile("../pkg/triple-rust.wasm")
+func loadRustWasmer() {
+	wasmBytes, _ := os.ReadFile("../pkg/triple-rust.wasm")
 	// engine
 	engine := wasmer.NewEngine()
 	store := wasmer.NewStore(engine)
@@ -77,24 +74,41 @@ func loadRustWasm() {
 	fmt.Println(result)
 }
 
-// func wagon() {
-// 	f, _ := os.Open("../static/main.wasm")
-// 	m, _ := wasm.ReadModule(f, nil)
-// 	vm, _ := exec.NewVM(m)
-// 	// result = hello(100, 20)
-// 	// msg := "调用wasm"
-// 	result, err := vm.ExecCode(0, 1)
-// 	fmt.Printf("ret: %v, err: %v", result, err)
-// }
+func loadTinyGoWazero() {
+	buf, _ := os.ReadFile("../pkg/wasi.wasm")
 
-func gasm() {
-	buf, _ := ioutil.ReadFile("../pkg/main.wasm")
-	mod, _ := wasm.DecodeModule(bytes.NewBuffer(buf))
-	vm, _ := wasm.NewVM(mod, wasi.New().Modules())
-	// call
-	// msg := "调用wasm方法"
-	// arg := &msg
-	ret, retTypes, err := vm.ExecExportedFunction("hello", 5)
-	fmt.Println("ret: %v, retTypes: %v, err: %v", ret, retTypes, err)
+	// Choose the context to use for function calls.
+	ctx := context.Background()
 
+	// Create a new WebAssembly Runtime.
+	runtime := wazero.NewRuntime()
+	defer runtime.Close(ctx) // This closes everything this Runtime created.
+
+	// wasi.wasm was compiled with TinyGo, which requires being instantiated as
+	// a WASI command (to initialize memory).
+	if _, err := wasi.InstantiateSnapshotPreview1(ctx, runtime); err != nil {
+		fmt.Println("Failed to instantiate WASI:", err)
+	}
+
+	code, err := runtime.CompileModule(ctx, buf, wazero.NewCompileConfig())
+	if err != nil {
+		fmt.Println("Failed to compile module:", err)
+	}
+
+	module, err := runtime.InstantiateModule(ctx, code, wazero.NewModuleConfig())
+	if err != nil {
+		panic(fmt.Sprintln("Failed to instantiate the module:", err))
+	}
+
+	multiply := module.ExportedFunction("multiply")
+	if multiply == nil {
+		panic("Failed to locate the `multiply` function")
+	}
+
+	result, err := multiply.Call(nil, 3, 5)
+	if err != nil {
+		panic(fmt.Sprintln("Failed to invoke the `multiply` function:", err))
+	}
+
+	fmt.Println(result)
 }
